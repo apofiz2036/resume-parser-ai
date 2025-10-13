@@ -3,10 +3,17 @@ from google.oauth2.service_account import Credentials
 
 from pprint import pprint
 
+from data_extractors import paei_scores, extract_text_from_fdoc
+from docx_writer import save_results_to_word
+
 print("Запуск скрипта")
 
 #Область доступа
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/documents.readonly",
+    "https://www.googleapis.com/auth/drive.readonly"
+]
 
 #TODO подключить .env
 try:
@@ -25,7 +32,7 @@ except:
     exit()
 
 #Открыть таблицу TODO вынести ссылку из кода
-spreadsheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1UB0XkHuLRVPU040D8ViGKQEANTiH_sQwKlilCWIdipc/edit?gid=0#") #TODO убрать отсюда
+spreadsheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1UB0XkHuLRVPU040D8ViGKQEANTiH_sQwKlilCWIdipc/") #TODO убрать отсюда
 sheet = spreadsheet.sheet1
 
 data_from_sheet = sheet.get_all_values()
@@ -34,17 +41,40 @@ headers = data_from_sheet[0]
 resume = 15
 test_task = 16
 paei = 17
-telegram_id = 0
 
-candidates = []
+for i, row in enumerate(data_from_sheet[1:], start=1):
+    paei_url = row[paei] if row[paei] not in ['', '#VALUE!'] else None
+    resume_url = row[resume] if row[resume] not in ['', '#VALUE!'] else None
+    test_task_url = row[test_task] if row[test_task] not in ['', '#VALUE!'] else None
 
-for row in data_from_sheet[1:]:
+    resume_result = None
+    test_task_result = None
+    paei_result = None
+
+    if paei_url:
+        try:
+            paei_result = paei_scores(paei_url)
+        except Exception as e:
+            print(f"Ошибка при получении PAEI для {paei_url}: {e}")
+            paei_result = None
+
+    if resume_url:
+        try:
+            resume_result = extract_text_from_fdoc(resume_url)
+        except Exception as e:
+            resume_result = None
+
+    if test_task_url:
+        try:
+            test_task_result = extract_text_from_fdoc(test_task_url)
+        except Exception as e:
+            test_task_result = None
+
     candidate = {
-        "telegram_id": row[telegram_id] if row[telegram_id] not in ['', '#VALUE!'] else None,
-        "resume": row[resume] if row[resume] not in ['', '#VALUE!'] else None,
-        "test_task": row[test_task] if row[test_task] not in ['', '#VALUE!'] else None,
-        "paei": row[paei] if row[paei] not in ['', '#VALUE!'] else None,
+        "resume": resume_result,
+        "test_task": test_task_result,
+        "paei": paei_result,
     }
-    candidates.append(candidate)
 
-pprint(candidates)
+    save_results_to_word(candidate, filename=f"candidate_{i}.docx")
+

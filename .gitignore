@@ -1,4 +1,5 @@
 service_account.json
 .env
 venv/
+output_docs
 __pycache__/

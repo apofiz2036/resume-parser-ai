@@ -4,7 +4,7 @@ from google.oauth2.service_account import Credentials
 from pprint import pprint
 
 from data_extractors import paei_scores, extract_text_from_fdoc
-from docx_writer import save_results_to_word
+from docx_writer import save_docx_to_gdive
 from gpt import ask_gpt
 
 print("Запуск скрипта")
@@ -77,5 +77,5 @@ for i, row in enumerate(data_from_sheet[1:], start=1):
         "paei": paei_result,
     }
 
-    save_results_to_word(ask_gpt(candidate), f"candidate_{i}.docx")
+    save_docx_to_gdive(ask_gpt(candidate), f"candidate_{i}.docx")
 

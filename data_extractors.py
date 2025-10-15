@@ -61,5 +61,4 @@ def extract_text_from_fdoc(url, creds_path="service_account.json"):
         
         return text.strip()
     except Exception as e:
-        print(f"Ошибка при чтении Google документа {url}", e)
         return None

@@ -1,55 +1,48 @@
 import os
+import re
+from datetime import datetime
+from dotenv import load_dotenv
 from docx import Document
+from yadisk import YaDisk
 
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
-from google.auth.transport.requests import Request
+load_dotenv()
+YANDEX_DISK_TOKEN = os.getenv("YANDEX_DISK_TOKEN")
 
-SCOPES = ['https://www.googleapis.com/auth/drive.file']
 
-def get_drive_service():
-    creds = None
-
-    if os.path.exists('token.json'):
-        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+def extract_name_from_text(text):
+    first_line = text.strip().split('\n')[0].strip()
+    name_safe = re.sub(r'[^\w\-]', '_', first_line)
     
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-             creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
-            creds = flow.run_local_server(port=0)
-    
-    with open('token.json', 'w') as token:
-            token.write(creds.to_json())
-    
-    return build('drive', 'v3', credentials=creds)
+    return name_safe
 
-def save_docx_to_gdive(gpt_response, filename, local_folder="output_docs"):
-    drive_folder_id = "1I4mXcSEGKU16397FXzb0QQnwGbVzDnxQ"
 
-    os.makedirs(local_folder, exist_ok=True)
-    local_path = os.path.join(local_folder, filename)
+def save_docx(text):
+    os.makedirs("output_docs", exist_ok=True)
+
+    name_part = extract_name_from_text(text)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{name_part}_{timestamp}.docx"
+
+    local_path = os.path.join("output_docs", filename)
+    
     doc = Document()
-    doc.add_paragraph(gpt_response if gpt_response else "Нет ответа от модели")
+    doc.add_paragraph(text)
     doc.save(local_path)
 
-    service = get_drive_service()
+    return(local_path)
 
-    file_metadata = {'name': filename}
-    if drive_folder_id:
-        file_metadata['parents'] = [drive_folder_id]
 
-    media = MediaFileUpload(local_path, mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-    uploaded_file = service.files().create(
-        body=file_metadata,
-        media_body=media,
-        fields='id, webViewLink'
-    ).execute()
+def upload_to_yandex(file_path):
+    y = YaDisk(token=YANDEX_DISK_TOKEN)
+    remote_dir = "/resume_script"
 
-    print(f"✅ Файл '{filename}' успешно загружен в Google Drive!")
-    print(f"🔗 Ссылка на просмотр: {uploaded_file.get('webViewLink')}")
+    if not y.exists(remote_dir):
+        y.mkdir(remote_dir)
 
-    return uploaded_file.get('id'), uploaded_file.get('webViewLink')
+    remote_path = f"{remote_dir}/{os.path.basename(file_path)}"
+    y.upload(file_path, remote_path, overwrite=True)
+
+
+def save_and_upload(text):
+    file_path = save_docx(text)
+    upload_to_yandex(file_path)

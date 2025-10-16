@@ -39,9 +39,9 @@ sheet = spreadsheet.sheet1
 data_from_sheet = sheet.get_all_values()
 headers = data_from_sheet[0]
 
-resume = 15
-test_task = 16
-paei = 17
+resume = 0
+test_task = 1
+paei = 2
 
 for i, row in enumerate(data_from_sheet[1:], start=1):
     paei_url = row[paei] if row[paei] not in ['', '#VALUE!'] else None

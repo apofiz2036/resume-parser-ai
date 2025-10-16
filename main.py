@@ -1,81 +1,97 @@
 import gspread
-from google.oauth2.service_account import Credentials
-
-from pprint import pprint
 
 from data_extractors import paei_scores, extract_text_from_fdoc
 from docx_writer import save_and_upload
 from gpt import ask_gpt
+from config import (
+    CREDS,
+    SPREADSHEET_URL,
+    COLUMN_RESUME,
+    COLUMN_TEST_TASK,
+    COLUMN_PAEI,
+    COLUMN_LINK_RESULT,
+    COLUMN_GRADE,
+)
 
-print("Запуск скрипта")
+def main():
+    print("Запуск скрипта")
 
-#Область доступа
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/documents.readonly",
-    "https://www.googleapis.com/auth/drive.readonly"
-]
+    # --- Авторизация ---
+    try:
+        client = gspread.authorize(CREDS)
+        print("Авторизация успешна")
+    except Exception as e:
+        print(f"Ошибка авторизации: {e}")
+        return
 
-#TODO подключить .env
-try:
-    creds = Credentials.from_service_account_file("service_account.json", scopes=SCOPES)
-    print("Кредиты загружены")
-except:
-    print("Кредиты не загружены")
-    exit()
+    # --- Работа с таблицей ---
+    try:
+        spreadsheet = client.open_by_url(SPREADSHEET_URL)
+        sheet = spreadsheet.sheet1
+        print("Таблица открыта")
+    except Exception as e:
+        print(f"Ошибка при открытии таблицы: {e}")
+        return
+    
+    data_from_sheet = sheet.get_all_values()
+    headers = data_from_sheet[0]
 
-#Создание клиента
-try:
-    client = gspread.authorize(creds)
-    print("Авторизация успешна")
-except:
-    print("Авторизация неуспешна")
-    exit()
+    print("Начало обработки кандидатов")
 
-#Открыть таблицу TODO вынести ссылку из кода
-spreadsheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1UB0XkHuLRVPU040D8ViGKQEANTiH_sQwKlilCWIdipc/") #TODO убрать отсюда
-sheet = spreadsheet.sheet1
+    # --- Основной цикл ---
+    for i, row in enumerate(data_from_sheet[1:], start=1):
+        # Пропускаем уже обработанных кандидатов
+        if row[COLUMN_LINK_RESULT] not in ['', None]:
+            continue
+        
+        paei_url = row[COLUMN_PAEI] if row[COLUMN_PAEI] not in ['', '#VALUE!'] else None
+        resume_url = row[COLUMN_RESUME] if row[COLUMN_RESUME] not in ['', '#VALUE!'] else None
+        test_task_url = row[COLUMN_TEST_TASK] if row[COLUMN_TEST_TASK] not in ['', '#VALUE!'] else None
 
-data_from_sheet = sheet.get_all_values()
-headers = data_from_sheet[0]
+        resume_result = None
+        test_task_result = None
+        paei_result = None
 
-resume = 0
-test_task = 1
-paei = 2
+        # --- PAEI ---
+        if paei_url:
+            try:
+                paei_result = paei_scores(paei_url)
+            except Exception as e:
+                print(f"Ошибка при получении PAEI для {paei_url}: {e}")
 
-for i, row in enumerate(data_from_sheet[1:], start=1):
-    paei_url = row[paei] if row[paei] not in ['', '#VALUE!'] else None
-    resume_url = row[resume] if row[resume] not in ['', '#VALUE!'] else None
-    test_task_url = row[test_task] if row[test_task] not in ['', '#VALUE!'] else None
+        # --- Резюме ---
+        if resume_url:
+            try:
+                resume_result = extract_text_from_fdoc(resume_url)
+            except Exception as e:
+                print(f"Ошибка при загрузке резюме ({resume_url}): {type(e).__name__}")
 
-    resume_result = None
-    test_task_result = None
-    paei_result = None
+        # --- Тестовое задание ---
+        if test_task_url:
+            try:
+                test_task_result = extract_text_from_fdoc(test_task_url)
+            except Exception as e:
+                print(f"Ошибка при извлечении тестового задания({test_task_url}): {type(e).__name__}")
 
-    if paei_url:
+        # --- Формируем данные кандидата ---
+        candidate = {
+            "resume": resume_result,
+            "test_task": test_task_result,
+            "paei": paei_result,
+        }
+
+        # --- Отправляем в GPT, сохраняем и выгружаем ---
         try:
-            paei_result = paei_scores(paei_url)
+            gpt_response = ask_gpt(candidate)
+            link_to_doc, grade_result = save_and_upload(gpt_response)
+            sheet.update_cell(i + 1, COLUMN_LINK_RESULT, link_to_doc)
+            sheet.update_cell(i + 1, COLUMN_GRADE, grade_result)
+            print(f"Обработан кандидат {i}: {grade_result}")
         except Exception as e:
-            print(f"Ошибка при получении PAEI для {paei_url}: {e}")
-            paei_result = None
+            print(f"Ошибка при обработке кандидата {i}: {e}")
 
-    if resume_url:
-        try:
-            resume_result = extract_text_from_fdoc(resume_url)
-        except Exception as e:
-            resume_result = None
+        print("Скрипт завершён")
 
-    if test_task_url:
-        try:
-            test_task_result = extract_text_from_fdoc(test_task_url)
-        except Exception as e:
-            test_task_result = None
 
-    candidate = {
-        "resume": resume_result,
-        "test_task": test_task_result,
-        "paei": paei_result,
-    }
-
-    save_and_upload(ask_gpt(candidate))
-
+if __name__ == "__main__":
+    main()

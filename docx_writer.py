@@ -8,6 +8,14 @@ from yadisk import YaDisk
 load_dotenv()
 YANDEX_DISK_TOKEN = os.getenv("YANDEX_DISK_TOKEN")
 
+def extract_grade(file_path):
+    doc = Document(file_path)
+    last_line = doc.paragraphs[-1].text.strip()
+    match = re.search(r'\d+\s*/\s*10', last_line)
+    if match:
+        return str(match.group(0))
+    return None
+
 
 def extract_name_from_text(text):
     first_line = text.strip().split('\n')[0].strip()
@@ -42,7 +50,12 @@ def upload_to_yandex(file_path):
     remote_path = f"{remote_dir}/{os.path.basename(file_path)}"
     y.upload(file_path, remote_path, overwrite=True)
 
+    link = y.get_download_link(remote_path)
+    return link
+
 
 def save_and_upload(text):
     file_path = save_docx(text)
-    upload_to_yandex(file_path)
+    link = upload_to_yandex(file_path)
+    grade = extract_grade(file_path)
+    return link, grade

@@ -3,22 +3,36 @@ import requests
 from docx import Document
 import os
 
+import logging
+from logging_config import get_logger
+
 load_dotenv()
 YANDEX_API_KEY = os.getenv("YANDEX_API_KEY")
 YANDEX_FOLDER_ID = os.getenv("YANDEX_FOLDER_ID")
+logger = get_logger(__name__)
 
 def load_prompt():
-    file_name = 'prompt.txt'
-    with open(file_name, 'r', encoding='utf-8') as file:
-        return file.read()
+    try:
+        file_name = 'prompt.txt'
+        with open(file_name, 'r', encoding='utf-8') as file:
+            return file.read()
+    except Exception as e:
+        error_message = f"Ошибка при загрузке промпта {e}"
+        print(error_message)
+        logger.error(error_message)
 
 
 def load_profile():
-    doc = Document('profile.docx')
-    text = ''
-    for paragraph in doc.paragraphs:
-        text += paragraph.text + '\n'
-    return text
+    try:
+        doc = Document('profile.docx')
+        text = ''
+        for paragraph in doc.paragraphs:
+            text += paragraph.text + '\n'
+        return text
+    except Exception as e:
+        error_message = f"Ошибка при загрузке профиля вакансии {e}"
+        print(error_message)
+        logger.error(error_message)
     
 
 def ask_gpt(candidate_data):
@@ -68,5 +82,7 @@ def ask_gpt(candidate_data):
         result_text = json_data["result"]["alternatives"][0]["message"]["text"]
         return result_text
     except Exception as e:
-        print(f"Ошибка при запросе к YandexGPT: {e}")
+        error_message = f"Ошибка при запросе к YandexGPT: {e}"
+        print(error_message)
+        logger.warning(error_message)
         return None

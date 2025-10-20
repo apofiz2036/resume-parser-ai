@@ -9,8 +9,13 @@ from webdriver_manager.chrome import ChromeDriverManager
 from googleapiclient.discovery import build
 from google.oauth2.service_account import Credentials
 
+import logging
+from logging_config import get_logger
+
 from bs4 import BeautifulSoup
 import time
+
+logger = get_logger(__name__)
 
 def paei_scores(url, timeout=10):
     options = Options()
@@ -39,7 +44,9 @@ def paei_scores(url, timeout=10):
 
         return paei_scores         
     except Exception as e:
-        print("Ошибка при парсинге PAEI:", e)
+        error_message = f"Ошибка при парсинге PAEI: {e}"
+        print(error_message)
+        logger.warning(error_message)
         return None
     finally:
         driver.quit()
@@ -61,4 +68,7 @@ def extract_text_from_fdoc(url, creds_path="service_account.json"):
         
         return text.strip()
     except Exception as e:
+        error_message = f"Ошибка чтения текстового файла: {e}"
+        print(error_message)
+        logger.warning(error_message)
         return None

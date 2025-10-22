@@ -1,11 +1,10 @@
 import gspread
-
 import logging
-from logging_config import get_logger
+from utils.logging_config import get_logger
 
-from data_extractors import paei_scores, extract_text_from_fdoc
-from docx_writer import save_and_upload
-from gpt import ask_gpt
+from parsers.data_extractors import paei_scores, extract_text_from_fdoc
+from services.file_manager import save_and_upload
+from services.gpt import ask_gpt
 from config import (
     CREDS,
     SPREADSHEET_URL,
@@ -17,11 +16,13 @@ from config import (
 )
 
 logger = get_logger(__name__)
+
+
 def main():
     print("Запуск скрипта")
     logger.info("Запуск скрипта")
 
-    # --- Авторизация ---
+    # --- Авторизация В GOOGLE SHEETS ---
     try:
         client = gspread.authorize(CREDS)
         print("Авторизация успешна")
@@ -31,7 +32,7 @@ def main():
         logger.error(error_message)
         return
 
-    # --- Работа с таблицей ---
+    # --- ОТКРЫТИЕ ТАБЛИЦЫ ---
     try:
         spreadsheet = client.open_by_url(SPREADSHEET_URL)
         sheet = spreadsheet.sheet1
@@ -42,26 +43,29 @@ def main():
         logger.error(error_message)
         return
     
+    # Получаем все данные из таблицы
     data_from_sheet = sheet.get_all_values()
     headers = data_from_sheet[0]
 
     print("Начало обработки кандидатов")
 
-    # --- Основной цикл ---
-    for i, row in enumerate(data_from_sheet[1:], start=1):
+    # --- ОБРАБОТКА КАНДИДАТОВ ---
+    for row_index, row in enumerate(data_from_sheet[1:], start=1):
         # Пропускаем уже обработанных кандидатов
         if row[COLUMN_LINK_RESULT] not in ['', None]:
             continue
         
-        paei_url = row[COLUMN_PAEI] if row[COLUMN_PAEI] not in ['', '#VALUE!'] else None
-        resume_url = row[COLUMN_RESUME] if row[COLUMN_RESUME] not in ['', '#VALUE!'] else None
-        test_task_url = row[COLUMN_TEST_TASK] if row[COLUMN_TEST_TASK] not in ['', '#VALUE!'] else None
+        # Получаем ссылки из таблицы
+        paei_url = row[COLUMN_PAEI] if row[COLUMN_PAEI] != '' else None
+        resume_url = row[COLUMN_RESUME] if row[COLUMN_RESUME] != '' else None
+        test_task_url = row[COLUMN_TEST_TASK] if row[COLUMN_TEST_TASK] != '' else None
 
-        resume_result = None
+        # Результаты обработки
+        resume_text = None
         test_task_result = None
         paei_result = None
 
-        # --- PAEI ---
+        # --- ОБРАБОТКА PAEI ТЕСТА ---
         if paei_url:
             try:
                 paei_result = paei_scores(paei_url)
@@ -69,15 +73,15 @@ def main():
                 print(f"Ошибка при получении PAEI для {paei_url}: {e}")
                 logger.warning(f"Ошибка при получении PAEI: {e}")
 
-        # --- Резюме ---
+        # --- ОБРАБОТКА РЕЗЮМЕ ---
         if resume_url:
             try:
-                resume_result = extract_text_from_fdoc(resume_url)
+                resume_text = extract_text_from_fdoc(resume_url)
             except Exception as e:
                 print(f"Ошибка при загрузке резюме ({resume_url}): {type(e).__name__}")
                 logger.warning(f"Ошибка при загрузке резюме: {e}")
 
-        # --- Тестовое задание ---
+        # --- ОБРАБОТКА ТЕСТОВОГО ЗАДАНИЯ ---
         if test_task_url:
             try:
                 test_task_result = extract_text_from_fdoc(test_task_url)
@@ -86,22 +90,22 @@ def main():
                 logger.warning(f"Ошибка при извлечении тестового задания: {e}")
 
 
-        # --- Формируем данные кандидата ---
-        candidate = {
-            "resume": resume_result,
+        # --- ФОРМИРУЕМ ДАННЫЕ КАНДИДАТА ---
+        candidate_data = {
+            "resume": resume_text,
             "test_task": test_task_result,
             "paei": paei_result,
         }
 
-        # --- Отправляем в GPT, сохраняем и выгружаем ---
+        # --- ОТПРАВКА В GPT И СОХРАНЕНИЕ РЕЗУЛЬТАТА ---
         try:
-            gpt_response = ask_gpt(candidate)
+            gpt_response = ask_gpt(candidate_data)
             link_to_doc, grade_result = save_and_upload(gpt_response)
-            sheet.update_cell(i + 1, COLUMN_LINK_RESULT, link_to_doc)
-            sheet.update_cell(i + 1, COLUMN_GRADE, grade_result)
-            print(f"Обработан кандидат {i}: {grade_result}")
+            sheet.update_cell(row_index + 1, COLUMN_LINK_RESULT, link_to_doc)
+            sheet.update_cell(row_index + 1, COLUMN_GRADE, grade_result)
+            print(f"Обработан кандидат {row_index}: {grade_result}")
         except Exception as e:
-            error_message = f"Ошибка при обработке кандидата {i}: {e}"
+            error_message = f"Ошибка при обработке кандидата {row_index}: {e}"
             print(error_message)
             logger.warning(error_message)
 

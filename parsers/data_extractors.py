@@ -10,7 +10,7 @@ from googleapiclient.discovery import build
 from google.oauth2.service_account import Credentials
 
 import logging
-from logging_config import get_logger
+from utils.logging_config import get_logger
 
 from bs4 import BeautifulSoup
 
@@ -87,7 +87,7 @@ def extract_text_from_fdoc(url, creds_path="service_account.json"):
             if "paragraph" in content:
                 for element in content["paragraph"].get("elements", []):
                     full_text += element.get("textRun", {}).get("content", "")
-        
+      
         return full_text.strip()
     
     except Exception as e:

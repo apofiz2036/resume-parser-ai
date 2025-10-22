@@ -1,21 +1,24 @@
-from dotenv import load_dotenv
 import requests
 from docx import Document
 import os
 
 import logging
-from logging_config import get_logger
+from utils.logging_config import get_logger
 
-load_dotenv()
-YANDEX_API_KEY = os.getenv("YANDEX_API_KEY")
-YANDEX_FOLDER_ID = os.getenv("YANDEX_FOLDER_ID")
+from config import YANDEX_API_KEY, YANDEX_FOLDER_ID
+
+
 logger = get_logger(__name__)
 
 def load_prompt():
+    """
+    Загружает промпт из файла prompt.txt
+    """
     try:
-        file_name = 'prompt.txt'
+        file_name = 'texts/prompt.txt'
         with open(file_name, 'r', encoding='utf-8') as file:
             return file.read()
+        
     except Exception as e:
         error_message = f"Ошибка при загрузке промпта {e}"
         print(error_message)
@@ -23,12 +26,18 @@ def load_prompt():
 
 
 def load_profile():
+    """
+    Загружает описание вакансии из profile.docx
+    """
     try:
-        doc = Document('profile.docx')
+        doc = Document('texts/profile.docx')
         text = ''
+
         for paragraph in doc.paragraphs:
             text += paragraph.text + '\n'
+    
         return text
+    
     except Exception as e:
         error_message = f"Ошибка при загрузке профиля вакансии {e}"
         print(error_message)
@@ -36,14 +45,21 @@ def load_profile():
     
 
 def ask_gpt(candidate_data):
+    """
+    Отправляет данные кандидата в YandexGPT для анализа
+    Возвращает текстовый ответ с оценкой кандидата
+    """
     url = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
+
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Api-Key {YANDEX_API_KEY}",
         "x-folder-id": YANDEX_FOLDER_ID,
     }
 
+    # Загружаем данные вакансии
     profile = load_profile()
+    prompt_template = load_prompt()
 
     prompt_text = f"""
     ОПИСАНИЕ ВАКАНСИИ:
@@ -60,7 +76,7 @@ def ask_gpt(candidate_data):
     PAEI ПРОФИЛЬ:
     {candidate_data.get('paei', 'Нет данных')}
     
-    {load_prompt()}
+    {prompt_template}
     """ 
 
     data = {
@@ -77,10 +93,12 @@ def ask_gpt(candidate_data):
     try:
         response = requests.post(url, headers=headers, json=data)
         response.raise_for_status()
-        json_data = response.json()
 
+        json_data = response.json()
         result_text = json_data["result"]["alternatives"][0]["message"]["text"]
+
         return result_text
+    
     except Exception as e:
         error_message = f"Ошибка при запросе к YandexGPT: {e}"
         print(error_message)
